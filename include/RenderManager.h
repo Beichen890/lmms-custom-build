@@ -1,0 +1,119 @@
+/*
+ * RenderManager.h - Provides a uniform interface for rendering the project or
+ *                   individual tracks for the CLI and GUI.
+ *
+ * Copyright (c) 2015 Ryan Roden-Corrent <ryan/at/rcorre.net>
+ *
+ * This file is part of LMMS - https://lmms.io
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public
+ * License as published by the Free Software Foundation; either
+ * version 2 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public
+ * License along with this program (see COPYING); if not, write to the
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+ * Boston, MA 02110-1301 USA.
+ *
+ */
+
+#ifndef LMMS_RENDER_MANAGER_H
+#define LMMS_RENDER_MANAGER_H
+
+#include <memory>
+
+#include <QJsonArray>
+
+#include "ProjectRenderer.h"
+#include "OutputSettings.h"
+
+
+namespace lmms
+{
+
+//! Options used by the CLI render actions.
+struct RenderOptions
+{
+	bool json = false;
+	double tailSeconds = 0.0;
+	bool normalize = false;
+	double normalizeDb = 0.0;
+	//! When set, `renderTracks()` writes a JSON manifest describing every
+	//! rendered stem into this path.
+	QString manifestPath;
+	//! Strip non-audio metadata chunks (PEAK, LIST, ...) from WAV output.
+	bool noMetadata = false;
+	QStringList warnings;
+};
+
+
+class RenderManager : public QObject
+{
+	Q_OBJECT
+public:
+	RenderManager(const OutputSettings& outputSettings, ProjectRenderer::ExportFileFormat fmt, QString outputPath,
+		const RenderOptions& options = RenderOptions());
+
+	~RenderManager() override;
+
+	/// Export all unmuted tracks into a single file
+	void renderProject();
+
+	/// Export all unmuted tracks into individual file
+	void renderTracks();
+
+	void abortProcessing();
+
+	const RenderStats& stats() const
+	{
+		return m_stats;
+	}
+
+signals:
+	void progressChanged( int );
+	void finished();
+
+private slots:
+	void renderNextTrack();
+	void updateConsoleProgress();
+
+private:
+	QString pathForTrack( const Track *track, int num );
+	void restoreMutedState();
+	void accumulateStats(const RenderStats& stats);
+
+	void recordManifestTrack(const Track* track, int index, const RenderStats& stats);
+	void writeManifest();
+
+	void render( QString outputPath );
+
+	const OutputSettings m_outputSettings;
+	ProjectRenderer::ExportFileFormat m_format;
+	QString m_outputPath;
+	RenderOptions m_options;
+
+	RenderStats m_stats;
+	bool m_renderingTracks = false;
+
+	std::unique_ptr<ProjectRenderer> m_activeRenderer;
+
+	std::vector<Track*> m_tracksToRender;
+	std::vector<Track*> m_unmuted;
+
+	//! Track currently being rendered and its per-stem manifest data.
+	Track* m_currentTrack = nullptr;
+	int m_currentTrackIndex = 0;
+	QString m_currentTrackFile;
+	QJsonArray m_manifestTracks;
+} ;
+
+
+} // namespace lmms
+
+#endif // LMMS_RENDER_MANAGER_H
